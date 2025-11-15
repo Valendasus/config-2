@@ -315,6 +315,83 @@ class DependencyVisualizer:
             print("  Обнаружены циклические зависимости")
         
         return graph
+    
+    def find_reverse_dependencies(self, target_package: str) -> Set[str]:
+        """
+        Поиск обратных зависимостей для заданного пакета.
+        Обратные зависимости - это пакеты, которые зависят от данного пакета.
+        
+        Args:
+            target_package: Пакет, для которого ищем обратные зависимости
+            
+        Returns:
+            Множество пакетов, которые зависят от target_package
+        """
+        reverse_deps = set()
+        
+        # Загружаем все пакеты, если еще не загружены
+        if not self.package_cache:
+            if self.test_mode:
+                print(f"Загрузка тестового репозитория из {self.repo_url}...")
+                self.package_cache = self._load_test_repository()
+            else:
+                print(f"Загрузка APKINDEX из {self.repo_url}...")
+                apkindex_content = self._fetch_apkindex()
+                self.package_cache = self._parse_apkindex(apkindex_content)
+            
+            print(f"Загружено информации о {len(self.package_cache)} пакетах")
+        
+        print(f"\nПоиск обратных зависимостей для пакета '{target_package}'...")
+        
+        # Обходим все пакеты и проверяем, зависят ли они от целевого
+        # Используем DFS без рекурсии для каждого пакета
+        for package in self.package_cache:
+            # Пропускаем сам целевой пакет
+            if package == target_package:
+                continue
+            
+            # Проверяем фильтр
+            if self.filter_substring and self.filter_substring in package:
+                continue
+            
+            # Ищем target_package в зависимостях этого пакета (с учетом транзитивности)
+            visited = set()
+            stack = [(package, 0)]
+            found = False
+            
+            while stack and not found:
+                current, depth = stack.pop()
+                
+                # Проверяем максимальную глубину
+                if depth > self.max_depth:
+                    continue
+                
+                if current in visited:
+                    continue
+                
+                visited.add(current)
+                
+                # Получаем зависимости
+                deps = self.package_cache.get(current, [])
+                
+                for dep in deps:
+                    # Проверяем фильтр
+                    if self.filter_substring and self.filter_substring in dep:
+                        continue
+                    
+                    # Если нашли целевой пакет - добавляем исходный пакет в результат
+                    if dep == target_package:
+                        reverse_deps.add(package)
+                        found = True
+                        break
+                    
+                    # Добавляем в стек для дальнейшего поиска
+                    if dep not in visited:
+                        stack.append((dep, depth + 1))
+        
+        print(f"Найдено {len(reverse_deps)} пакетов, зависящих от '{target_package}'")
+        
+        return reverse_deps
 
 
 def validate_arguments(args):
@@ -424,6 +501,13 @@ def parse_arguments():
         help='Подстрока для фильтрации пакетов (пакеты, содержащие эту подстроку, будут исключены из анализа)'
     )
     
+    parser.add_argument(
+        '--reverse-deps',
+        action='store_true',
+        default=False,
+        help='Режим вывода обратных зависимостей (пакеты, которые зависят от данного пакета)'
+    )
+    
     return parser.parse_args()
 
 
@@ -496,6 +580,28 @@ def main():
             return 4
         
         print("\n" + "=" * 60)
+        
+        # Этап 4: Обратные зависимости (если включен режим)
+        if args.reverse_deps:
+            print("\n" + "=" * 60)
+            print(f"ОБРАТНЫЕ ЗАВИСИМОСТИ ДЛЯ ПАКЕТА '{args.package}'")
+            print("=" * 60)
+            
+            try:
+                reverse_deps = visualizer.find_reverse_dependencies(args.package)
+                
+                if reverse_deps:
+                    print(f"\nПакеты, зависящие от '{args.package}':")
+                    for i, pkg in enumerate(sorted(reverse_deps), 1):
+                        print(f"  {i}. {pkg}")
+                else:
+                    print(f"\nНет пакетов, зависящих от '{args.package}'")
+            
+            except Exception as e:
+                print(f"Ошибка при поиске обратных зависимостей: {e}", file=sys.stderr)
+                return 5
+            
+            print("\n" + "=" * 60)
         
         return 0
         
