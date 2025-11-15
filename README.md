@@ -66,14 +66,36 @@ python dependency_visualizer.py --package musl --repo-url https://dl-cdn.alpinel
 - `--output`: Имя файла для сохранения графа (по умолчанию: dependency_graph.svg)
 - `--max-depth`: Максимальная глубина анализа зависимостей (по умолчанию: 10)
 - `--filter`: Подстрока для фильтрации пакетов (пакеты, содержащие эту подстроку, будут исключены)
+- `--reverse-deps`: Включить режим вывода обратных зависимостей
+
+## Примеры визуализации
+
+Подробные примеры визуализации и сравнение со штатными инструментами Alpine Linux см. в [VISUALIZATION_EXAMPLES.md](VISUALIZATION_EXAMPLES.md)
+
+### Пример 1: Простой граф
+```bash
+python dependency_visualizer.py --package A --repo-url test_repo.txt --test-mode --output graph_A.svg --max-depth 3
+```
+
+### Пример 2: Граф с циклическими зависимостями
+```bash
+python dependency_visualizer.py --package L --repo-url test_repo.txt --test-mode --output graph_L.svg --max-depth 5
+```
+
+### Пример 3: Обратные зависимости
+```bash
+python dependency_visualizer.py --package G --repo-url test_repo.txt --test-mode --output test.svg --reverse-deps
+```
 
 ## Этапы разработки
 
-- [x] **Этап 1**: Минимальный прототип с конфигурацией
-- [ ] **Этап 2**: Сбор данных о зависимостях
-- [ ] **Этап 3**: Построение графа зависимостей (DFS без рекурсии)
-- [ ] **Этап 4**: Анализ обратных зависимостей
-- [ ] **Этап 5**: Визуализация в Mermaid и экспорт в SVG
+- [x] **Этап 1**: Минимальный прототип с конфигурацией ✅
+- [x] **Этап 2**: Сбор данных о зависимостях ✅
+- [x] **Этап 3**: Построение графа зависимостей (DFS без рекурсии) ✅
+- [x] **Этап 4**: Анализ обратных зависимостей ✅
+- [x] **Этап 5**: Визуализация в Mermaid и экспорт в SVG ✅
+
+**Все этапы успешно завершены!**
 
 ## Требования
 

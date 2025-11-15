@@ -392,6 +392,136 @@ class DependencyVisualizer:
         print(f"Найдено {len(reverse_deps)} пакетов, зависящих от '{target_package}'")
         
         return reverse_deps
+    
+    def generate_mermaid(self, graph: Dict[str, Set[str]]) -> str:
+        """
+        Генерация текстового представления графа в формате Mermaid.
+        
+        Args:
+            graph: Граф зависимостей {пакет: множество_зависимостей}
+            
+        Returns:
+            Строка с кодом Mermaid
+        """
+        lines = ["graph TD"]
+        
+        # Добавляем узлы и рёбра
+        for package in sorted(graph.keys()):
+            # Экранируем специальные символы для Mermaid
+            safe_package = package.replace("-", "_").replace(".", "_").replace(":", "_")
+            
+            # Добавляем узел с меткой
+            lines.append(f'    {safe_package}["{package}"]')
+            
+            # Добавляем рёбра к зависимостям
+            for dep in sorted(graph[package]):
+                safe_dep = dep.replace("-", "_").replace(".", "_").replace(":", "_")
+                lines.append(f'    {safe_package} --> {safe_dep}')
+        
+        # Если граф пустой, добавляем заглушку
+        if len(graph) == 0:
+            lines.append('    Empty["Граф пуст"]')
+        elif len(graph) == 1 and not any(graph.values()):
+            # Если один узел без зависимостей
+            package = list(graph.keys())[0]
+            safe_package = package.replace("-", "_").replace(".", "_").replace(":", "_")
+            lines.append(f'    {safe_package}["{package}"]')
+        
+        return '\n'.join(lines)
+    
+    def save_mermaid_to_svg(self, mermaid_code: str) -> str:
+        """
+        Сохранение графа Mermaid в файл SVG.
+        Использует Mermaid CLI (mmdc) если доступен, иначе создает SVG с кодом Mermaid.
+        
+        Args:
+            mermaid_code: Код графа в формате Mermaid
+            
+        Returns:
+            Путь к сохраненному файлу
+        """
+        import subprocess
+        import tempfile
+        import os
+        
+        # Сначала сохраняем Mermaid код в текстовый файл
+        mermaid_file = self.output_file.replace('.svg', '.mmd')
+        with open(mermaid_file, 'w', encoding='utf-8') as f:
+            f.write(mermaid_code)
+        
+        print(f"Mermaid код сохранен в: {mermaid_file}")
+        
+        # Проверяем, доступен ли mmdc (Mermaid CLI)
+        try:
+            result = subprocess.run(['mmdc', '--version'], 
+                                  capture_output=True, 
+                                  text=True, 
+                                  timeout=5)
+            mmdc_available = result.returncode == 0
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            mmdc_available = False
+        
+        if mmdc_available:
+            # Используем mmdc для конвертации
+            try:
+                print(f"Генерация SVG с помощью Mermaid CLI...")
+                result = subprocess.run(
+                    ['mmdc', '-i', mermaid_file, '-o', self.output_file, '-t', 'neutral'],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                if result.returncode == 0:
+                    print(f"SVG успешно сохранен в: {self.output_file}")
+                    return self.output_file
+                else:
+                    print(f"Ошибка mmdc: {result.stderr}")
+                    print("Создание простого SVG с текстом Mermaid...")
+            except subprocess.TimeoutExpired:
+                print("Таймаут при выполнении mmdc")
+                print("Создание простого SVG с текстом Mermaid...")
+        else:
+            print("Mermaid CLI (mmdc) не найден.")
+            print("Установите: npm install -g @mermaid-js/mermaid-cli")
+            print("Создание простого SVG с текстом Mermaid...")
+        
+        # Создаем простой SVG с кодом Mermaid и инструкцией
+        svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#f9f9f9"/>
+  <text x="400" y="50" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#333">
+    Граф зависимостей: {self.package_name}
+  </text>
+  <text x="400" y="80" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#666">
+    Для визуализации используйте файл {mermaid_file}
+  </text>
+  <text x="400" y="110" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#999">
+    Просмотр: https://mermaid.live или установите mmdc
+  </text>
+  <rect x="50" y="130" width="700" height="430" fill="white" stroke="#ccc" stroke-width="2" rx="5"/>
+  <text x="60" y="160" font-family="Courier New, monospace" font-size="11" fill="#333">
+    <tspan x="60" dy="0">{mermaid_code.split(chr(10))[0]}</tspan>
+'''
+        
+        # Добавляем строки кода Mermaid (ограничиваем количество)
+        lines = mermaid_code.split('\n')
+        y_offset = 175
+        for i, line in enumerate(lines[1:35]):  # Первые 34 строки после заголовка
+            svg_content += f'    <tspan x="60" dy="15">{line[:80]}</tspan>\n'
+            y_offset += 15
+        
+        if len(lines) > 35:
+            svg_content += f'    <tspan x="60" dy="20">... ({len(lines) - 35} строк скрыто) ...</tspan>\n'
+        
+        svg_content += '''  </text>
+</svg>'''
+        
+        with open(self.output_file, 'w', encoding='utf-8') as f:
+            f.write(svg_content)
+        
+        print(f"SVG с предварительным просмотром сохранен в: {self.output_file}")
+        return self.output_file
 
 
 def validate_arguments(args):
@@ -602,6 +732,29 @@ def main():
                 return 5
             
             print("\n" + "=" * 60)
+        
+        # Этап 5: Визуализация
+        print("\n" + "=" * 60)
+        print("ВИЗУАЛИЗАЦИЯ ГРАФА")
+        print("=" * 60)
+        
+        try:
+            # Генерируем Mermaid код
+            mermaid_code = visualizer.generate_mermaid(graph)
+            print("\nГенерация Mermaid кода...")
+            print(f"Размер графа: {len(mermaid_code.split(chr(10)))} строк\n")
+            
+            # Сохраняем в SVG
+            output_path = visualizer.save_mermaid_to_svg(mermaid_code)
+            print(f"\n✓ Визуализация завершена")
+            print(f"  Mermaid: {output_path.replace('.svg', '.mmd')}")
+            print(f"  SVG: {output_path}")
+        
+        except Exception as e:
+            print(f"Ошибка при визуализации: {e}", file=sys.stderr)
+            return 6
+        
+        print("=" * 60)
         
         return 0
         
