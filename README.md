@@ -59,6 +59,8 @@ python dependency_visualizer.py --package <имя_пакета> --repo-url <URL_
 
 ### Примеры
 
+![alt text](test_a.svg)
+
 #### Анализ пакета busybox
 ```bash
 python dependency_visualizer.py --package busybox --repo-url https://dl-cdn.alpinelinux.org/alpine/v3.18/main/x86_64 --output busybox_deps.svg
