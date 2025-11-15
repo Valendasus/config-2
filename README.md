@@ -35,6 +35,22 @@ python -m venv .venv
 
 ## Использование
 
+### Быстрый старт (Shell-скрипты)
+
+Для быстрой демонстрации всех этапов используйте готовые shell-скрипты:
+
+```bash
+# Запуск всех этапов последовательно
+chmod +x run_all_stages.sh
+./run_all_stages.sh
+
+# Или запуск отдельного этапа
+chmod +x run_stage1.sh
+./run_stage1.sh
+```
+
+Подробнее см. [SCRIPTS_README.md](SCRIPTS_README.md)
+
 ### Базовое использование
 
 ```bash
