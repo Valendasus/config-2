@@ -168,6 +168,41 @@ class DependencyVisualizer:
         
         return packages
     
+    def _load_test_repository(self) -> Dict[str, List[str]]:
+        """
+        Загрузка тестового репозитория из файла.
+        
+        Returns:
+            Словарь {имя_пакета: [список_зависимостей]}
+        """
+        packages = {}
+        
+        try:
+            with open(self.repo_url, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    
+                    # Пропускаем комментарии и пустые строки
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    # Парсим формат: PACKAGE: DEP1 DEP2 DEP3
+                    if ':' in line:
+                        parts = line.split(':', 1)
+                        package = parts[0].strip()
+                        deps_str = parts[1].strip() if len(parts) > 1 else ''
+                        
+                        # Разделяем зависимости по пробелам
+                        deps = [d.strip() for d in deps_str.split() if d.strip()]
+                        packages[package] = deps
+        
+        except FileNotFoundError:
+            raise Exception(f"Файл тестового репозитория не найден: {self.repo_url}")
+        except Exception as e:
+            raise Exception(f"Ошибка чтения тестового репозитория: {e}")
+        
+        return packages
+    
     def get_direct_dependencies(self, package_name: str) -> List[str]:
         """
         Получение прямых зависимостей пакета.
@@ -182,15 +217,104 @@ class DependencyVisualizer:
         if package_name in self.package_cache:
             return self.package_cache[package_name]
         
-        # Если кеш пуст, загружаем APKINDEX
+        # Если кеш пуст, загружаем данные
         if not self.package_cache:
-            print(f"Загрузка APKINDEX из {self.repo_url}...")
-            apkindex_content = self._fetch_apkindex()
-            self.package_cache = self._parse_apkindex(apkindex_content)
+            if self.test_mode:
+                print(f"Загрузка тестового репозитория из {self.repo_url}...")
+                self.package_cache = self._load_test_repository()
+            else:
+                print(f"Загрузка APKINDEX из {self.repo_url}...")
+                apkindex_content = self._fetch_apkindex()
+                self.package_cache = self._parse_apkindex(apkindex_content)
+            
             print(f"Загружено информации о {len(self.package_cache)} пакетах")
         
         # Возвращаем зависимости пакета
         return self.package_cache.get(package_name, [])
+    
+    def build_dependency_graph(self) -> Dict[str, Set[str]]:
+        """
+        Построение полного графа зависимостей с использованием DFS без рекурсии.
+        Учитывает максимальную глубину, фильтрацию и циклические зависимости.
+        
+        Returns:
+            Словарь {пакет: множество_зависимостей}
+        """
+        graph = {}
+        visited = set()  # Посещенные пакеты (для обнаружения циклов)
+        
+        # Стек для DFS: (пакет, глубина)
+        stack = [(self.package_name, 0)]
+        
+        # Дополнительный набор для отслеживания пакетов в текущем пути (обнаружение циклов)
+        path_set = set()
+        
+        print(f"\nПостроение графа зависимостей для пакета '{self.package_name}'...")
+        print(f"Максимальная глубина: {self.max_depth}")
+        if self.filter_substring:
+            print(f"Фильтрация пакетов с подстрокой: '{self.filter_substring}'")
+        
+        while stack:
+            package, depth = stack.pop()
+            
+            # Проверяем максимальную глубину
+            if depth > self.max_depth:
+                continue
+            
+            # Проверяем фильтр
+            if self.filter_substring and self.filter_substring in package:
+                print(f"  Пропуск пакета '{package}' (содержит подстроку '{self.filter_substring}')")
+                continue
+            
+            # Проверяем, не посещали ли мы уже этот пакет
+            if package in visited:
+                # Если пакет в текущем пути - цикл
+                if package in path_set:
+                    print(f"  Обнаружен цикл: пакет '{package}' уже в пути обхода")
+                continue
+            
+            visited.add(package)
+            path_set.add(package)
+            
+            # Получаем прямые зависимости
+            try:
+                dependencies = self.get_direct_dependencies(package)
+            except Exception as e:
+                print(f"  Ошибка получения зависимостей для '{package}': {e}")
+                dependencies = []
+            
+            # Добавляем в граф
+            if package not in graph:
+                graph[package] = set()
+            
+            # Добавляем зависимости в граф и стек для обхода
+            for dep in dependencies:
+                # Проверяем фильтр для зависимости
+                if self.filter_substring and self.filter_substring in dep:
+                    continue
+                
+                graph[package].add(dep)
+                
+                # Добавляем в стек только если еще не посещали
+                if dep not in visited:
+                    stack.append((dep, depth + 1))
+            
+            # Убираем из текущего пути при возврате
+            # (в реальности это происходит автоматически из-за обхода в ширину стека)
+        
+        print(f"Построен граф с {len(graph)} узлами")
+        
+        # Вывод статистики циклов
+        cycles_detected = False
+        for package in graph:
+            if package in graph[package]:
+                print(f"  Самозависимость: {package} -> {package}")
+                cycles_detected = True
+        
+        if cycles_detected:
+            print("  Обнаружены циклические зависимости")
+        
+        return graph
 
 
 def validate_arguments(args):
@@ -345,6 +469,33 @@ def main():
             return 3
         
         print("=" * 60)
+        
+        # Этап 3: Построение графа зависимостей
+        print("\n" + "=" * 60)
+        print("ГРАФ ЗАВИСИМОСТЕЙ (транзитивный)")
+        print("=" * 60)
+        
+        try:
+            graph = visualizer.build_dependency_graph()
+            
+            if graph:
+                print(f"\nГраф содержит {len(graph)} пакетов:")
+                for package in sorted(graph.keys()):
+                    deps = sorted(graph[package])
+                    if deps:
+                        print(f"\n  {package}:")
+                        for dep in deps:
+                            print(f"    -> {dep}")
+                    else:
+                        print(f"\n  {package}: (нет зависимостей)")
+            else:
+                print("Граф пуст")
+        
+        except Exception as e:
+            print(f"Ошибка при построении графа: {e}", file=sys.stderr)
+            return 4
+        
+        print("\n" + "=" * 60)
         
         return 0
         
