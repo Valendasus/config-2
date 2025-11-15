@@ -59,7 +59,7 @@ python dependency_visualizer.py --package <имя_пакета> --repo-url <URL_
 
 ### Примеры
 
-![alt text](test_a.svg)
+<img width="547" height="694" alt="Снимок экрана 2025-11-15 в 16 06 12" src="https://github.com/user-attachments/assets/29a5f6b6-5ab0-46bb-9e10-fd6732abcc2d" />
 
 #### Анализ пакета busybox
 ```bash
@@ -127,3 +127,4 @@ MIT License
 ## Автор
 
 Разработано в рамках выполнения задания по конфигурационному управлению.
+
